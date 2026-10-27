@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace "bl4ck3gg.uia2mcp"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "bl4ck3gg.uia2mcp"
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            output.outputFileName = "uia2-mcp.apk"
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+}

@@ -1,0 +1,133 @@
+package bl4ck3gg.uia2mcp;
+
+import android.app.UiAutomation;
+import androidx.test.uiautomator.UiDevice;
+import uiautomator.InstrumentShellWrapper;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
+
+/**
+ * Entry point for uia2-mcp when executed through app_process.
+ *
+ *   CLASSPATH=/data/local/tmp/uia2-mcp.apk app_process / bl4ck3gg.uia2mcp.Main [options]
+ *
+ * Options:
+ *   --connect tcp:HOST:PORT        dial out and serve MCP on that stream (reverse)
+ *   --connect localabstract:NAME   same, over an Android abstract socket
+ *   --port N                       listen on N instead of 18080 (forward mode)
+ *   (a bare number is accepted as --port, for the original argv shape)
+ *
+ * THE ORDER OF THE FIRST TWO CALLS IS LOAD-BEARING. `getContext()` is what bootstraps
+ * ActivityThread and the main Looper under app_process; asking for UiAutomation before
+ * that hangs forever, because the accessibility connection has nothing to deliver its
+ * callbacks to. The upstream server does it in this order and the reason is not
+ * documented anywhere -- it was found the hard way.
+ *
+ * STDOUT IS NOT RELIABLE HERE. Under a pipe or a redirect, Java's System.out is fully
+ * buffered, so a process that dies mid-startup leaves an empty log and looks like it
+ * never ran. Logging goes to a file through an auto-flushing stream so the last line
+ * written is always the last thing that happened.
+ */
+public class Main {
+
+    private static PrintStream log;
+
+    public static void main(String... args) {
+        log = openLog();
+
+        String connect = null;
+        int port = 18080;
+
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
+            if (a.startsWith("--connect=")) {
+                connect = a.substring("--connect=".length());
+            } else if ("--connect".equals(a)) {
+                if (i + 1 < args.length) connect = args[++i];
+            } else if (a.startsWith("--port=")) {
+                port = parseInt(a.substring("--port=".length()), port);
+            } else if ("--port".equals(a)) {
+                if (i + 1 < args.length) port = parseInt(args[++i], port);
+            } else if (a.matches("\\d+")) {
+                port = parseInt(a, port);
+            }
+        }
+
+        boolean reverse = connect != null && connect.length() > 0;
+        step("uia2-mcp starting (" + (reverse ? "reverse -> " + connect : "listen on port " + port) + ")");
+
+        try {
+            InstrumentShellWrapper wrapper = InstrumentShellWrapper.getInstance();
+            step("wrapper created");
+
+            // Must precede anything that touches UiAutomation. See the class comment.
+            wrapper.getContext();
+            step("context ready");
+
+            UiDevice device = UiDevice.getInstance(wrapper);
+            step("UiDevice ready");
+
+            try {
+                device.wakeUp();
+                step("wake requested");
+            } catch (Throwable t) {
+                step("wake failed (continuing): " + t);
+            }
+
+            UiAutomation automation = wrapper.getUiAutomation();
+            step("UiAutomation connected: " + (automation != null));
+
+            McpCore core = new McpCore(device, automation);
+
+            if (reverse) {
+                new ReverseClient(core, connect).run();
+                return;
+            }
+
+            McpHttpServer server = new McpHttpServer(port, core);
+            server.start();
+            step("listening on 0.0.0.0:" + port + "  (POST /mcp)");
+            while (server.isAlive()) {
+                Thread.sleep(1000);
+            }
+            step("server stopped");
+        } catch (Throwable t) {
+            step("FATAL " + t);
+            t.printStackTrace(log);
+            log.flush();
+            System.exit(1);
+        }
+    }
+
+    private static int parseInt(String s, int fallback) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    /**
+     * Opens the log beside the APK, falling back to stderr when that path is not
+     * writable. Auto-flush is the point: a buffered log hides exactly the crash it
+     * exists to record.
+     */
+    private static PrintStream openLog() {
+        try {
+            File f = new File("/data/local/tmp/uia2-mcp.log");
+            return new PrintStream(new FileOutputStream(f, true), true, "UTF-8");
+        } catch (Throwable t) {
+            return System.err;
+        }
+    }
+
+    /** Writes one timestamped line to the log, flushed immediately. */
+    static void step(String msg) {
+        if (log != null) {
+            log.println("[uia2-mcp] " + msg);
+            log.flush();
+        }
+    }
+}
