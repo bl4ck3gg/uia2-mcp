@@ -3,7 +3,6 @@ package bl4ck3gg.uia2mcp;
 import android.app.UiAutomation;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
-import androidx.test.uiautomator.UiDevice;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -19,11 +18,11 @@ public class McpCore {
 
     private static final long CLICK_SETTLE_MS = 3000;
 
-    private final UiDevice device;
+    private final UiActions actions;
     private final UiAutomation automation;
 
-    public McpCore(UiDevice device, UiAutomation automation) {
-        this.device = device;
+    public McpCore(UiActions actions, UiAutomation automation) {
+        this.actions = actions;
         this.automation = automation;
     }
 
@@ -174,7 +173,7 @@ public class McpCore {
             y = target.cy;
         }
 
-        boolean clicked = device.click(x, y);
+        boolean clicked = actions.tap(x, y);
 
         // A fixed sleep has to guess: 300 ms is too short for a browser cold start
         // (measured at ~2 s on a Note 9) and too long for a checkbox. Polling for the
@@ -214,37 +213,39 @@ public class McpCore {
         String action = args.optString("action", "");
         switch (action) {
             case "text": {
+                boolean any = false;
                 for (char c : args.optString("text", "").toCharArray()) {
                     int code = charToKeyCode(c);
-                    if (code != 0) device.pressKeyCode(code);
+                    if (code != 0) any |= actions.key(code);
                 }
-                return true;
+                return any;
             }
             case "key": {
                 switch (args.optString("key", "").toLowerCase()) {
-                    case "home": return device.pressHome();
-                    case "back": return device.pressBack();
-                    case "recent": try { return device.pressRecentApps(); } catch (android.os.RemoteException e) { return false; }
-                    case "enter": return device.pressEnter();
+                    case "home": return actions.globalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME);
+                    case "back": return actions.globalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+                    case "recent": return actions.globalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS);
+                    case "enter": return actions.key(android.view.KeyEvent.KEYCODE_ENTER);
                     default:
                         try {
-                            return device.pressKeyCode(Integer.parseInt(args.optString("key", "0")));
+                            return actions.key(Integer.parseInt(args.optString("key", "0")));
                         } catch (NumberFormatException e) {
                             return false;
                         }
                 }
             }
             case "swipe": {
-                int w = device.getDisplayWidth();
-                int h = device.getDisplayHeight();
-                int cx = w / 2;
-                int cy = h / 2;
-                int span = h / 3;
+                // The screen size comes from the accessibility root's bounds rather
+                // than a display API, so it works on any device without extra calls.
+                int[] size = screenSize();
+                int cx = size[0] / 2;
+                int cy = size[1] / 2;
+                int span = size[1] / 3;
                 switch (args.optString("direction", "up")) {
-                    case "up": return device.swipe(cx, cy + span, cx, cy - span, 20);
-                    case "down": return device.swipe(cx, cy - span, cx, cy + span, 20);
-                    case "left": return device.swipe(cx + span, cy, cx - span, cy, 20);
-                    case "right": return device.swipe(cx - span, cy, cx + span, cy, 20);
+                    case "up": return actions.swipe(cx, cy + span, cx, cy - span, 200);
+                    case "down": return actions.swipe(cx, cy - span, cx, cy + span, 200);
+                    case "left": return actions.swipe(cx + span, cy, cx - span, cy, 200);
+                    case "right": return actions.swipe(cx - span, cy, cx + span, cy, 200);
                 }
                 return false;
             }
@@ -275,6 +276,23 @@ public class McpCore {
                 .put("until", until)
                 .put("waited_ms", SystemClock.uptimeMillis() - start)
                 .put("polls", polls);
+    }
+
+    /** Returns {width, height} of the active window, falling back to a common phone size. */
+    private int[] screenSize() {
+        android.view.accessibility.AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        if (root != null) {
+            try {
+                android.graphics.Rect r = new android.graphics.Rect();
+                root.getBoundsInScreen(r);
+                if (r.width() > 0 && r.height() > 0) {
+                    return new int[]{r.width(), r.height()};
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+        return new int[]{1080, 1920};
     }
 
     private CompactProjection.Snapshot takeSnapshot() {

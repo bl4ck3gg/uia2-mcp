@@ -1,7 +1,6 @@
 package bl4ck3gg.uia2mcp;
 
 import android.app.UiAutomation;
-import androidx.test.uiautomator.UiDevice;
 import uiautomator.InstrumentShellWrapper;
 
 import java.io.File;
@@ -66,20 +65,25 @@ public class Main {
             wrapper.getContext();
             step("context ready");
 
-            UiDevice device = UiDevice.getInstance(wrapper);
-            step("UiDevice ready");
+            // UiAutomation is obtained and connected once, by us. UiDevice is
+            // deliberately not used: it re-derives its own automation inside its
+            // constructor and gives the caller no way to supply a connected one.
+            UiAutomation automation = wrapper.getUiAutomation();
+            if (automation == null) {
+                step("FATAL UiAutomation could not be connected");
+                System.exit(1);
+            }
+            step("UiAutomation connected");
 
+            UiActions actions = new UiActions(automation);
             try {
-                device.wakeUp();
+                actions.wake();
                 step("wake requested");
             } catch (Throwable t) {
                 step("wake failed (continuing): " + t);
             }
 
-            UiAutomation automation = wrapper.getUiAutomation();
-            step("UiAutomation connected: " + (automation != null));
-
-            McpCore core = new McpCore(device, automation);
+            McpCore core = new McpCore(actions, automation);
 
             if (reverse) {
                 new ReverseClient(core, connect).run();
