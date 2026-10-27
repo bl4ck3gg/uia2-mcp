@@ -5,7 +5,6 @@ import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import androidx.test.uiautomator.Configurator;
 
 /**
  * UiActions drives the device through UiAutomation directly.
@@ -25,10 +24,6 @@ public class UiActions {
 
     public UiActions(UiAutomation automation) {
         this.automation = automation;
-        // Match UiDevice's defaults so gesture timing feels the same to apps.
-        Configurator.getInstance()
-                .setActionAcknowledgmentTimeout(3000)
-                .setWaitForIdleTimeout(0);
     }
 
     /** Wakes the screen. Returns false when the device already refuses the key. */

@@ -92,7 +92,7 @@ public class Main {
 
             McpHttpServer server = new McpHttpServer(port, core);
             server.start();
-            step("listening on 0.0.0.0:" + port + "  (POST /mcp)");
+            step("listening on 127.0.0.1:" + port + "  (POST /mcp)");
             while (server.isAlive()) {
                 Thread.sleep(1000);
             }

@@ -16,8 +16,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
@@ -33,7 +34,9 @@ android {
     }
 }
 
-dependencies {
-    implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
-    implementation 'org.nanohttpd:nanohttpd:2.3.1'
-}
+// No third-party runtime dependencies on purpose. The two this project used to
+// carry -- androidx.test.uiautomator for one Configurator call, and NanoHTTPD for
+// one request shape -- contributed most of the APK's bytes and none of its
+// behaviour once UiDevice was dropped.
+dependencies {}
+
