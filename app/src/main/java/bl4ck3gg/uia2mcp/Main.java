@@ -37,11 +37,17 @@ public class Main {
         log = openLog();
 
         String connect = null;
+        String bridge = null;
+        String abstractName = "gnirehtet";
         int port = 18080;
 
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
-            if (a.startsWith("--connect=")) {
+            if ("bridge".equals(a)) {
+                bridge = "yes";
+            } else if (a.startsWith("--abstract=")) {
+                abstractName = a.substring("--abstract=".length());
+            } else if (a.startsWith("--connect=")) {
                 connect = a.substring("--connect=".length());
             } else if ("--connect".equals(a)) {
                 if (i + 1 < args.length) connect = args[++i];
@@ -52,6 +58,23 @@ public class Main {
             } else if (a.matches("\\d+")) {
                 port = parseInt(a, port);
             }
+        }
+
+        // The bridge entry point needs no Android services at all: it never touches
+        // UiAutomation, so it can start before (and independently of) the accessibility
+        // connection. That matters because it must work on a device where nothing has
+        // granted accessibility access.
+        if (bridge != null) {
+            step("uia2-mcp bridge starting (tcp " + port + " <-> localabstract:" + abstractName + ")");
+            try {
+                new Bridge(port, abstractName).run();
+            } catch (Throwable t) {
+                step("FATAL bridge " + t);
+                t.printStackTrace(log);
+                log.flush();
+                System.exit(1);
+            }
+            return;
         }
 
         boolean reverse = connect != null && connect.length() > 0;
