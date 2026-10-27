@@ -67,7 +67,7 @@ public class Main {
         if (bridge != null) {
             step("uia2-mcp bridge starting (tcp " + port + " <-> localabstract:" + abstractName + ")");
             try {
-                new Bridge(port, abstractName).run();
+                new Bridge(port, 31417).run();
             } catch (Throwable t) {
                 step("FATAL bridge " + t);
                 t.printStackTrace(log);

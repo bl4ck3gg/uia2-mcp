@@ -24,6 +24,9 @@ import android.util.Log;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 
 public final class RelayTunnel implements Tunnel {
 
@@ -31,7 +34,36 @@ public final class RelayTunnel implements Tunnel {
 
     private static final String LOCAL_ABSTRACT_NAME = "gnirehtet";
 
+    /**
+     * The relay endpoint, as "host:port".
+     *
+     * WHY THIS IS A FIELD AND NOT A CONSTANT. The original client dialled an
+     * abstract socket by name, which only adb reverse could ever serve -- adbd
+     * runs as root and can bind names under /dev/socket, while a process started
+     * by app_process cannot. That made the device depend on the host being
+     * reachable backwards, which is the one direction a forwarded channel cannot
+     * go.
+     *
+     * A TCP port has none of that baggage: the app dials 127.0.0.1, a bridge
+     * listens there, and adb forward carries the same traffic forward from the
+     * host side. Set by the Service from the intent that started it.
+     */
+    private static String relayHost = "127.0.0.1";
+    private static int relayPort = 31417;
+
+    public static void setRelayEndpoint(String host, int port) {
+        if (host != null && host.length() > 0) {
+            relayHost = host;
+        }
+        if (port > 0) {
+            relayPort = port;
+        }
+    }
+
     private final LocalSocket localSocket = new LocalSocket();
+    private Socket tcpSocket;
+    private InputStream in;
+    private OutputStream out;
 
     private RelayTunnel() {
         // exposed through open() static method
@@ -46,8 +78,24 @@ public final class RelayTunnel implements Tunnel {
     }
 
     public void connect() throws IOException {
-        localSocket.connect(new LocalSocketAddress(LOCAL_ABSTRACT_NAME));
-        readClientId(localSocket.getInputStream());
+        // TCP first: it is the endpoint this build is meant to reach, and the one a
+        // bridge started by app_process is allowed to bind.
+        try {
+            Socket s = new Socket();
+            s.connect(new InetSocketAddress(relayHost, relayPort), 5000);
+            tcpSocket = s;
+            in = s.getInputStream();
+            out = s.getOutputStream();
+            Log.d(TAG, "Connected to relay at " + relayHost + ":" + relayPort);
+        } catch (IOException e) {
+            // Fall back to the abstract socket so this build still works with the
+            // original adb reverse arrangement.
+            Log.d(TAG, "TCP relay unreachable (" + e.getMessage() + "), trying localabstract");
+            localSocket.connect(new LocalSocketAddress(LOCAL_ABSTRACT_NAME));
+            in = localSocket.getInputStream();
+            out = localSocket.getOutputStream();
+        }
+        readClientId(in);
     }
 
     /**
@@ -78,12 +126,13 @@ public final class RelayTunnel implements Tunnel {
         if (GnirehtetService.VERBOSE) {
             Log.v(TAG, "Sending packet: " + Binary.buildPacketString(packet, len));
         }
-        localSocket.getOutputStream().write(packet, 0, len);
+        out.write(packet, 0, len);
+        out.flush();
     }
 
     @Override
     public int receive(byte[] packet) throws IOException {
-        int r = localSocket.getInputStream().read(packet);
+        int r = in.read(packet);
         if (GnirehtetService.VERBOSE) {
             Log.v(TAG, "Receiving packet: " + Binary.buildPacketString(packet, r));
         }
@@ -93,6 +142,10 @@ public final class RelayTunnel implements Tunnel {
     @Override
     public void close() {
         try {
+            if (tcpSocket != null) {
+                tcpSocket.close();
+                return;
+            }
             if (localSocket.getFileDescriptor() != null) {
                 // close the streams to interrupt pending read and writes
                 localSocket.shutdownInput();

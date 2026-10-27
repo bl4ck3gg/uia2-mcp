@@ -1,68 +1,40 @@
-# uia2-mcp
+# uia2-mcp — archived
 
-Pure Java streamable MCP server for Android UIAutomator — compact hierarchy
-projection, verified actions, zero-dependency `app_process` daemon.
+This project has moved.
 
-- **728 KB standalone APK** — no Jackson, no jsonrpc4j, no bulky frameworks.
-- **Dual transports**:
-  - **Forward (HTTP)**: Streamable HTTP on a local port (`POST /mcp`), reachable
-    via `adb forward`.
-  - **Reverse (stream)**: Dials out to an existing upstream (`--connect
-    localabstract:name` or `--connect tcp:host:port`) and serves newline-delimited
-    JSON-RPC over the established stream. **Zero open ports on the device, zero
-    exposure to neighbouring apps.**
-- **Compact UI projection**: Directly walks live `AccessibilityNodeInfo` objects to
-  emit minimal JSON (~90% smaller than raw dump). **Never serialises to XML.**
-- **Verified actions**: `ui_click` adaptively watches the screen for observable
-  changes before answering, eliminating arbitrary sleeps.
-- **MIT Licensed**.
+Everything here now lives in **[bl4ck3gg/adbox-mcp]** under `agent/`, and it is
+no longer only a UI automation server, so it is no longer called `uia2`.
+The renamed device-side agent is `adbox-agent`.
 
-## Tools Exposed
+| Was | Is |
+|---|---|
+| repository `uia2-mcp` | `adbox-mcp`, directory `agent/` |
+| package `bl4ck3gg.uia2mcp` | `bl4ck3gg.adbox.agent` |
+| artifact `uia2-mcp.apk` | `adbox-agent.apk` |
+| `app_process ... bl4ck3gg.uia2mcp.Main` | `app_process ... bl4ck3gg.adbox.agent.Main` |
 
-- `ui_dump`: Capture screen elements with text, id, desc, class, and center coordinates.
-- `ui_click`: Click by text, id, or coordinates, reporting `verified: true/false`, `settle_ms`, and observed changes.
-- `ui_input`: Native touch events (text injection, key press, directional swipe).
-- `ui_wait`: In-process adaptive polling until text appears or disappears.
+## Why the move
 
-## Build
+The APK was already embedded inside adbox as a payload, so keeping its sources
+in a second repository meant two places to change the same protocol and two
+versions to keep in step, with nothing gained. adbox now builds the agent from
+`agent/` and embeds the result as `internal/embedded/adbox-agent.apk`.
 
-```bash
-./gradlew :app:assembleRelease
-# outputs app/build/outputs/apk/release/uia2-mcp.apk (~728 KB)
-```
+## Why the rename
 
-## Run on Device
+`uia2-mcp` named the first thing the process did. It went on to carry four:
 
-Push the APK to the device:
+- UI automation (`ui_dump`, `ui_click`, `ui_wait`)
+- a reflection evaluator reaching any hidden API (`device_eval`)
+- a VpnService client (the vendored gnirehtet)
+- a packet bridge connecting the app to a forwarded TCP port
 
-```bash
-adb push app/build/outputs/apk/release/uia2-mcp.apk /data/local/tmp/
-```
+The new name says which side it belongs to rather than which job came first.
 
-### Mode 1: Reverse (recommended)
+## What is still true here
 
-Host sets up a reverse tunnel, device connects back:
+The history, the tags, and the MIT licence (which carries the original
+xiaocong 2015 copyright notice from the `uiautomator` bootstrap shims) remain
+in this repository. Nothing was rewritten; the work continued elsewhere.
 
-```bash
-# On host
-adb reverse localabstract:uia2-mcp tcp:19999
-
-# On device
-CLASSPATH=/data/local/tmp/uia2-mcp.apk app_process / bl4ck3gg.uia2mcp.Main \
-    --connect localabstract:uia2-mcp
-```
-
-### Mode 2: Forward HTTP
-
-```bash
-# On device
-CLASSPATH=/data/local/tmp/uia2-mcp.apk app_process / bl4ck3gg.uia2mcp.Main --port 18080
-
-# On host
-adb forward tcp:18080 tcp:18080
-curl -X POST http://127.0.0.1:18080/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
-
-## Credits
-
-Bootstrap reflection shims derived from [xiaocong/uiautomator](https://github.com/xiaocong/uiautomator) (MIT License).
+[bl4ck3gg/adbox-mcp]: https://github.com/bl4ck3gg/adbox-mcp

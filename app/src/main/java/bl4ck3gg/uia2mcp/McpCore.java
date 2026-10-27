@@ -146,6 +146,9 @@ public class McpCore {
                 content.put("text", new JSONObject().put("ok", doInput(args)).toString());
                 break;
             }
+            case "device_eval": {
+                return Reflect.eval(null, args);
+            }
             case "ui_wait": {
                 content.put("text", doWait(args).toString());
                 break;
